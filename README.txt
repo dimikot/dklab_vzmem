@@ -2,6 +2,14 @@ vzmem: visual noncontradictory memory distribution tool for OpenVZ
 (C) dkLab, http://en.dklab.ru/lib/dklab_vzmem/
 
 
+INSTALLATION
+------------
+
+cd /usr/sbin
+wget http://github.com/DmitryKoterov/dklab_vzmem/raw/master/vzmem
+chmod +x vzmem
+
+
 SYNOPSIS
 --------
 
