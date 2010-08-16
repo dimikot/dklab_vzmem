@@ -2,7 +2,7 @@ vzmem: visual noncontradictory memory distribution tool for OpenVZ
 (C) dkLab, http://en.dklab.ru/lib/dklab_vzmem/
 
 
-SYNOPSYS
+SYNOPSIS
 --------
 
 1. Initialize a new /etc/vz/conf/MEM-MAP file based on your 
