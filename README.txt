@@ -2,6 +2,15 @@ vzmem: visual noncontradictory memory distribution tool for OpenVZ
 (C) dkLab, http://en.dklab.ru/lib/dklab_vzmem/
 
 
+Vzmem is a pseudo-graphical tool which allows you to distribute physical 
+memory among all VEs consistently. It shows all physical memory blocks 
+graphically in /etc/vz/conf/MEM-MAP  text file and lets you to move these 
+blocks from one VE to another to redistribute the memory. Also you may 
+specify "additional" memory personally for each VE: such memory will be 
+obtained from system's free memory or swap (it is reflected as modifying 
+of privvmpages  parameter). 
+
+
 INSTALLATION
 ------------
 
