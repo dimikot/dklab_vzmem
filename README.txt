@@ -8,14 +8,14 @@ graphically in /etc/vz/conf/MEM-MAP  text file and lets you to move these
 blocks from one VE to another to redistribute the memory. Also you may 
 specify "additional" memory personally for each VE: such memory will be 
 obtained from system's free memory or swap (it is reflected as modifying 
-of privvmpages  parameter). 
+of privvmpages parameter). 
 
 
 INSTALLATION
 ------------
 
 cd /usr/sbin
-wget http://github.com/DmitryKoterov/dklab_vzmem/raw/master/vzmem
+wget https://raw.github.com/DmitryKoterov/dklab_vzmem/master/vzmem
 chmod +x vzmem
 
 

@@ -38,6 +38,9 @@ sub do_apply {
 
 	# Update kilobytes at the right size.
 	write_mem_map($BLK_NUM, \@hosts);
+	
+	# Max limit value for this OS.
+	my $max_word = (`uname -m` =~ /64/? "9223372036854775807" : "2147483647");
 
 	foreach my $fn (glob($DIR . "/*.conf")) {
 		next if $fn !~ m{/([^/.]+)\.conf$}s;
@@ -54,7 +57,7 @@ sub do_apply {
 		my $blk = int($host->{size} / 4);
 		my $pr_blk = int(($host->{ex_size} + $host->{size}) / 4);
 		my %repl = (
-			VMGUARPAGES  => "$blk:9223372036854775807",
+			VMGUARPAGES  => "$blk:$max_word",
 			PRIVVMPAGES  => "$pr_blk:$pr_blk",
 			OOMGUARPAGES => "$pr_blk:$pr_blk",
 			SHMPAGES     => "$blk:$blk",
