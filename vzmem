@@ -1,13 +1,19 @@
 #!/usr/bin/perl -w
+use strict;
 
-my $VERSION = "1.02, 2010-03-16";
+my $VERSION = "1.10, 2013-03-07";
 
-my $FREE = 1024 * 128;
-my $DEF_BLK_NUM = 400;
+my $BARRIER_LIMIT_GAP_PERCENT = 10;
 my $MAP_FILE = "MEM-MAP";
-my ($DIR) = grep { -d $_ } ("/etc/sysconfig/vz-scripts", "/etc/vz/conf");
-my ($MEM_KB) = `top -b -n1 -d0` =~ /^Mem:\s*(\d+)/m or die "Cannot parse 'top' command!\n";
+my $DEF_FREE_KB = 1024 * 128;
+my $DEF_BLK_NUM = 200;
 
+my $TOP = `top -b -n1 -d0`;
+my $PAGE_SIZE_KB = 4;
+my $MAX_WORD = (`uname -m` =~ /64/? "9223372036854775807" : "2147483647");
+my ($DIR) = grep { -d $_ } ("/etc/sysconfig/vz-scripts", "/etc/vz/conf");
+my ($MEM_KB) = $TOP =~ /^Mem:\s*(\d+)k/mi or die "Cannot parse 'top' command!\n";
+my ($SWP_KB) = $TOP =~ /^Swap:\s*(\d+)k/mi or die "Cannot parse 'top' command!\n";
 
 my $cmd = shift @ARGV or usage();
 if ($cmd eq "-i") {
@@ -20,7 +26,7 @@ if ($cmd eq "-i") {
 
 
 sub usage {
-	die 
+	die
 		"dkLab vzmem: distribute memory visually among VEs.\n" .
 		"Homepage: http://en.dklab.ru/lib/dklab_vzmem/\n" .
 		"Usage:\n" .
@@ -31,50 +37,50 @@ sub usage {
 }
 
 sub do_apply {
-	local ($BLK_NUM, *hosts) = read_mem_map();
+	my ($BLK_NUM, $hosts) = read_mem_map();
 
 	# Check that we have exact number of blocks.
-	validate_mem_map($BLK_NUM, \@hosts);
+	validate_mem_map($BLK_NUM, $hosts);
 
 	# Update kilobytes at the right size.
-	write_mem_map($BLK_NUM, \@hosts);
-	
-	# Max limit value for this OS.
-	my $max_word = (`uname -m` =~ /64/? "9223372036854775807" : "2147483647");
+	write_mem_map($BLK_NUM, $hosts);
 
+	my @commands = @_;
 	foreach my $fn (glob($DIR . "/*.conf")) {
 		next if $fn !~ m{/([^/.]+)\.conf$}s;
-	    	my $veid = $1;
+		my $veid = $1;
 		next if !$veid;
-		my ($host) = grep { $_->{veid} == $veid } @hosts;
+		my ($host) = grep { $_->{veid} == $veid } @$hosts;
 		die "Cannot find VEID $veid in the map file!\n" if !$host;
-	
+
 		local $/;
 		open(local *F, $fn) or die "Cannot read $fn: $!\n";
 		my $c = <F>;
 		close(F);
 
-		my $blk = int($host->{size} / 4);
-		my $pr_blk = int(($host->{ex_size} + $host->{size}) / 4);
+		my $blk = int($host->{size} / $PAGE_SIZE_KB);
+		my $pr_blk = int(($host->{ex_size} + $host->{size}) / $PAGE_SIZE_KB);
 		my %repl = (
-			VMGUARPAGES  => "$blk:$max_word",
-			PRIVVMPAGES  => "$pr_blk:$pr_blk",
-			OOMGUARPAGES => "$pr_blk:$pr_blk",
-			SHMPAGES     => "$blk:$blk",
+			VMGUARPAGES  => "$blk",
+			PRIVVMPAGES  => "$pr_blk:" . int($pr_blk * (1 + 0.01 * $BARRIER_LIMIT_GAP_PERCENT)),
+			OOMGUARPAGES => "$pr_blk",
+			SHMPAGES     => "$blk",
 		);
 		my @args = ();
 		while (my ($k, $v) = each %repl) {
 			my $before = $c;
 			# Do NOT append "#" comments after variable assignment in *.conf,
 			# they are not supported by OpenVZ!
-			$c =~ s{^(\s*$k\s*=\s*[\"\']?)[\d:]+([\"\']?)}{$1 . $v . $2}me or die "Cannot find $k in $fn\n";
+			$c =~ s{^(\s*$k\s*=\s*[\"\']?)[\w:]+([\"\']?)}{$1 . $v . $2}me or die "Cannot find $k with proper formatted value in $fn\n";
 			push @args, "--" . lc($k) . " $v" if $before ne $c;
 		}
 		if (@args) {
-			my $cmd = "vzctl set $host->{veid} " . join(" ", @args) . " --save";
-			print "# $cmd\n";
-			system($cmd);
+			push @commands, "vzctl set $host->{veid} " . join(" ", @args) . " --save";
 		}
+	}
+	foreach my $cmd (@commands) {
+		print "# $cmd\n";
+		system($cmd);
 	}
 }
 
@@ -82,28 +88,30 @@ sub do_import {
 	my ($BLK_NUM) = @_;
 
 	my @hosts = ();
-	foreach (glob($DIR . "/*.conf")) {
-		next if !m{/([^/.]+)\.conf$}s;
+	foreach my $fn (glob($DIR . "/*.conf")) {
+		next if $fn !~ m{/([^/.]+)\.conf$}s;
 		my $veid = $1;
 		next if !$veid || $veid !~ /^\d+$/;
 		local $/;
-		open(local *F, $_) or die "Cannot read $_: $!\n";
+		open(local *F, $fn) or die "Cannot read $fn: $!\n";
 		my $c = <F>;
 		close(F);
-		$c =~ /^\s*VMGUARPAGES\s*=\s*[\"\']?(\d+)/m or die "Cannot find VMGUARPAGES in $_\n";
-		my $pages = $1;
-		$c =~ /^\s*PRIVVMPAGES\s*=\s*[\"\']?(\d+)/m or die "Cannot find PRIVVMPAGES in $_\n";
-		my $pr_pages = $1;
-		$c =~ /^\s*HOSTNAME\s*=\s*[\"\']?([^\"\'\s]+)/m or die "Cannot find HOSTNAME in $_\n";
+		$c =~ /^\s*VMGUARPAGES\s*=\s*[\"\']?(\w+)/m or die "Cannot find VMGUARPAGES in $fn\n";
+		my $pages = to_pages($1, "VMGUARPAGES, file $fn");
+		$pages = min($pages, $MEM_KB / $PAGE_SIZE_KB);
+		$c =~ /^\s*PRIVVMPAGES\s*=\s*[\"\']?(\w+)/m or die "Cannot find PRIVVMPAGES in $fn\n";
+		my $pr_pages = to_pages($1, "PRIVVMPAGES, file $fn");
+		$pr_pages = min($pr_pages, ($MEM_KB + $SWP_KB) / $PAGE_SIZE_KB);
+		$c =~ /^\s*HOSTNAME\s*=\s*[\"\']?([^\"\'\s]+)/m or die "Cannot find HOSTNAME in $fn\n";
 		my $host = $1;
 		push @hosts, {
 			veid    => $veid,
 			host    => $host,
-			size    => $pages * 4,
-			ex_size => ($pr_pages >= $pages? $pr_pages - $pages : 0) * 4,
+			size    => $pages * $PAGE_SIZE_KB,
+			ex_size => ($pr_pages >= $pages? $pr_pages - $pages : 0) * $PAGE_SIZE_KB,
 		};
 	}
-	
+
 	# Calculate free memory size.
 	my $sum = 0;
 	foreach (@hosts) {
@@ -113,16 +121,16 @@ sub do_import {
 	# Try to use previous options.
 	my $free_host = undef;
 	eval {
-		local ($old_blk_num, *old_hosts) = read_mem_map();
+		my ($old_blk_num, $old_hosts) = read_mem_map();
 		$BLK_NUM ||= $old_blk_num;
-		($free_host) = grep { !$_->{veid} } @old_hosts;
+		($free_host) = grep { !$_->{veid} } @$old_hosts;
 	};
 
 	$BLK_NUM ||= $DEF_BLK_NUM;
 	push(@hosts, $free_host || {
 		veid => 0,
 		host => "FREE",
-		size => ($sum < $MEM_KB? $MEM_KB - $sum : $FREE),
+		size => ($sum < $MEM_KB? $MEM_KB - $sum : $DEF_FREE_KB),
 		ex_size => 0,
 	});
 
@@ -159,9 +167,9 @@ sub read_mem_map {
 }
 
 sub validate_mem_map {
-	local ($BLK_NUM, *hosts) = @_;
+	my ($BLK_NUM, $hosts) = @_;
 	my $num = 0;
-	foreach (@hosts) {
+	foreach (@$hosts) {
 		$num += $_->{num};
 	}
 	die "Total number of blocks is $num, but $BLK_NUM expected.\n" if $num != $BLK_NUM;
@@ -169,18 +177,18 @@ sub validate_mem_map {
 
 
 sub write_mem_map {
-	local ($BLK_NUM, *hosts) = @_;
+	my ($BLK_NUM, $hosts) = @_;
 	my $blk_sz = int($MEM_KB / $BLK_NUM);
-	
+
 	my $len = 0;
-	foreach (@hosts) {
+	foreach (@$hosts) {
 		$len = length($_->{host}) if length($_->{host}) > $len;
 	}
-	
+
 	open(local *F, ">", "$DIR/$MAP_FILE") or die "Cannot create '$DIR/$MAP_FILE': $!\n";
 	print F "$BLK_NUM\n";
-	
-	my @hosts = sort { !$a->{veid}? 1 : (!$b->{veid}? -1 : ($a->{veid} <=> $b->{veid})) } @hosts;
+
+	my @hosts = sort { !$a->{veid}? 1 : (!$b->{veid}? -1 : ($a->{veid} <=> $b->{veid})) } @$hosts;
 	my $used = 0;
 	while ($_ = shift @hosts) {
 		my $nblk = int(0.5 + $_->{size} / $blk_sz);
@@ -199,12 +207,27 @@ sub write_mem_map {
 }
 
 sub normalize_sizes {
-	local (*hosts) = @_;
+	my ($hosts) = @_;
 	my $sum = 0;
-	foreach (@hosts) {
+	foreach (@$hosts) {
 		$sum += $_->{size};
 	}
-	foreach (@hosts) {
+	foreach (@$hosts) {
 		$_->{size} *= $MEM_KB / $sum;
 	}
+}
+
+sub to_pages {
+	my ($c, $at) = @_;
+	return $MAX_WORD if $c eq "unlimited";
+	return int($1) if $c =~ /^(\d+)P?/si;
+	return int($1 / $PAGE_SIZE_KB) if $c =~ /^(\d+)K/si;
+	return int($1 * 1024 / $PAGE_SIZE_KB) if $c =~ /^(\d+)M/si;
+	return int($1 * 1024 * 1024 / $PAGE_SIZE_KB) if $c =~ /^(\d+)G/si;
+	die "Unknown size specifier: \"$c\" at $at\n";
+}
+
+sub min {
+	my ($a, $b) = @_;
+	return $a < $b? $a : $b;
 }
