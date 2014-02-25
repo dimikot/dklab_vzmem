@@ -146,7 +146,7 @@ sub read_mem_map {
 		s/^\s+|#.*|\s+$//sg;
 		next if !$_;
 		chomp($BLK_NUM = $_);
-		die "Invalid number of blocks: '$BLK_NUM'\n" if $BLK_NUM !~ /^\d+$/ || $BLK_NUM < 100;
+		die "Invalid number of blocks: '$BLK_NUM'\n" if $BLK_NUM !~ /^\d+$/ || $BLK_NUM < 10;
 		last;
 	}
 	my $blk_sz = int($MEM_KB / $BLK_NUM);
