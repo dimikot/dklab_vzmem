@@ -14,7 +14,8 @@ INSTALLATION
 ------------
 
 cd /usr/sbin
-wget https://raw.github.com/DmitryKoterov/dklab_vzmem/master/vzmem
+rm ./vzmem #remove old version to update
+wget https://raw.github.com/dimprofi/dklab_vzmem/master/vzmem
 chmod +x vzmem
 
 
