@@ -14,7 +14,7 @@ INSTALLATION
 ------------
 
 cd /usr/sbin
-wget https://raw.github.com/DmitryKoterov/dklab_vzmem/master/vzmem
+wget https://raw.github.com/dimprofi/dklab_vzmem/master/vzmem
 chmod +x vzmem
 
 
