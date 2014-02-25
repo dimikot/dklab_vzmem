@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-my $VERSION = "1.10, 2013-03-07";
+my $VERSION = "1.11, 2014-02-25";
 
 my $BARRIER_LIMIT_GAP_PERCENT = 10;
 my $MAP_FILE = "MEM-MAP";
@@ -13,11 +13,8 @@ my $PAGE_SIZE_KB = 4;
 my $MAX_WORD = (`uname -m` =~ /64/? "9223372036854775807" : "2147483647");
 my ($DIR) = grep { -d $_ } ("/etc/sysconfig/vz-scripts", "/etc/vz/conf");
 
-#my ($MEM_KB) = $TOP =~ /^Mem:\s*(\d+)k/mi or die "Cannot parse 'top' command!\n";
-my ($MEM_KB) = $TOP =~ /^KiB Mem:\s*(\d+)/mi or die "Cannot parse 'top' command!\n"; #For Debian Wheezy
-
-#my ($SWP_KB) = $TOP =~ /^Swap:\s*(\d+)k/mi or die "Cannot parse 'top' command!\n";
-my ($SWP_KB) = $TOP =~ /^KiB Swap:\s*(\d+)/mi or die "Cannot parse 'top' command!\n"; #For Debian Wheezy
+my ($MEM_KB) = $TOP =~ /^KiB Mem:\s*(\d+)/mi or die "Cannot parse 'top' command!\n"; 
+my ($SWP_KB) = $TOP =~ /^KiB Swap:\s*(\d+)/mi or die "Cannot parse 'top' command!\n";
 
 my $cmd = shift @ARGV or usage();
 if ($cmd eq "-i") {
